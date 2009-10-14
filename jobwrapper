@@ -32,33 +32,38 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 # set basename of wrapper dynamically or to a static value
-BASENAME=$(basename $0)
-PIDFILE=/tmp/$BASENAME.pid
-RUNLOG=/tmp/$BASENAME.log
-# /bin/echo for STDOUT or /usr/bin/logger for syslog
-# - see the logger man page for customization options
-LOGGER="/bin/echo"
+BASENAME="$(basename $0)"
+PIDFILE="/tmp/$BASENAME.pid"
+# log is overwritten on each run, but not removed
+RUNLOG="/tmp/$BASENAME.log"
+# "/usr/bin/logger -t $BASENAME --" for syslog
+# "/bin/echo" for STDOUT
+LOGGER="/usr/bin/logger -t $BASENAME --"
 
 # /path/to/script, command, or $@ for all args passed to the wrapper
-SCRIPT="/bin/sleep 10"
+SCRIPT="sleep 10"
 
 runjob() {
     echo $$ > $PIDFILE
     PID=$(cat $PIDFILE)
-    $LOGGER "$BASENAME: PID($PID): starting job.."
+    $LOGGER "PID($PID): starting job.."
     $SCRIPT > $RUNLOG 2>&1
-    $LOGGER "$(cat $RUNLOG)"
-    $LOGGER "$BASENAME: PID($PID): done."
+    # file descriptor assignment that works well for both echo and logger
+    exec 9< $RUNLOG
+    while read -u 9 LINE; do
+        $LOGGER "$LINE"
+    done
+    $LOGGER "PID($PID): done."
     rm $PIDFILE
 }
 
 if [ -f $PIDFILE ]; then
     PID=$(cat $PIDFILE)
     if ps -p $PID >/dev/null; then
-        $LOGGER "$BASENAME: aborted - job PID($PID) is already running.."
+        $LOGGER "aborted - job PID($PID) is already running.."
         exit 0
     else
-        $LOGGER "$BASENAME: $PIDFILE exists, but PID($PID) seems dead..  running job.."
+        $LOGGER "$PIDFILE exists, but PID($PID) seems dead..  running job.."
         runjob
     fi
 else
